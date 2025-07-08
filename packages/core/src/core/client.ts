@@ -39,7 +39,6 @@ import {
 } from './contentGenerator.js';
 import { ProxyAgent, setGlobalDispatcher } from 'undici';
 import { DEFAULT_GEMINI_FLASH_MODEL } from '../config/models.js';
-import { AuthType } from './contentGenerator.js';
 import { extractJsonFromText } from '../utils/jsonUtils.js';
 
 function isThinkingSupported(model: string) {
