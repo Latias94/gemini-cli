@@ -14,8 +14,10 @@ import {
   GoogleGenAI,
 } from '@google/genai';
 import { createCodeAssistContentGenerator } from '../code_assist/codeAssist.js';
-import { DEFAULT_GEMINI_MODEL } from '../config/models.js';
+import { DEFAULT_GEMINI_MODEL, DEFAULT_DEEPSEEK_MODEL, DEFAULT_OPENAI_LIKE_MODEL } from '../config/models.js';
 import { getEffectiveModel } from './modelCheck.js';
+import { DeepSeekContentGenerator } from './deepseekContentGenerator.js';
+import { OpenAILikeContentGenerator, OpenAILikeConfig } from './openaiLikeContentGenerator.js';
 
 /**
  * Interface abstracting the core functionalities for generating content and counting tokens.
@@ -39,6 +41,8 @@ export enum AuthType {
   USE_GEMINI = 'gemini-api-key',
   USE_VERTEX_AI = 'vertex-ai',
   CLOUD_SHELL = 'cloud-shell',
+  USE_DEEPSEEK = 'deepseek-api-key',
+  USE_OPENAI_LIKE = 'openai-like-api',
 }
 
 export type ContentGeneratorConfig = {
@@ -46,6 +50,7 @@ export type ContentGeneratorConfig = {
   apiKey?: string;
   vertexai?: boolean;
   authType?: AuthType | undefined;
+  openaiLikeConfig?: OpenAILikeConfig;
 };
 
 export async function createContentGeneratorConfig(
@@ -53,6 +58,10 @@ export async function createContentGeneratorConfig(
   authType: AuthType | undefined,
 ): Promise<ContentGeneratorConfig> {
   const geminiApiKey = process.env.GEMINI_API_KEY;
+  const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
+  const openaiLikeApiKey = process.env.OPENAI_LIKE_API_KEY;
+  const openaiLikeBaseUrl = process.env.OPENAI_LIKE_BASE_URL;
+  const openaiLikeModel = process.env.OPENAI_LIKE_MODEL;
   const googleApiKey = process.env.GOOGLE_API_KEY;
   const googleCloudProject = process.env.GOOGLE_CLOUD_PROJECT;
   const googleCloudLocation = process.env.GOOGLE_CLOUD_LOCATION;
@@ -79,6 +88,29 @@ export async function createContentGeneratorConfig(
       contentGeneratorConfig.apiKey,
       contentGeneratorConfig.model,
     );
+
+    return contentGeneratorConfig;
+  }
+
+  if (authType === AuthType.USE_DEEPSEEK && deepseekApiKey) {
+    contentGeneratorConfig.apiKey = deepseekApiKey;
+    // DeepSeek doesn't need the same model fallback logic as Gemini
+    // Use deepseek-chat as default model if not specified
+    if (!contentGeneratorConfig.model || contentGeneratorConfig.model === DEFAULT_GEMINI_MODEL) {
+      contentGeneratorConfig.model = DEFAULT_DEEPSEEK_MODEL;
+    }
+
+    return contentGeneratorConfig;
+  }
+
+  if (authType === AuthType.USE_OPENAI_LIKE && openaiLikeApiKey && openaiLikeBaseUrl) {
+    contentGeneratorConfig.openaiLikeConfig = {
+      apiKey: openaiLikeApiKey,
+      baseUrl: openaiLikeBaseUrl,
+      modelName: openaiLikeModel || DEFAULT_OPENAI_LIKE_MODEL
+    };
+    // Use the configured model or default
+    contentGeneratorConfig.model = openaiLikeModel || DEFAULT_OPENAI_LIKE_MODEL;
 
     return contentGeneratorConfig;
   }
@@ -134,6 +166,20 @@ export async function createContentGenerator(
     });
 
     return googleGenAI.models;
+  }
+
+  if (config.authType === AuthType.USE_DEEPSEEK) {
+    if (!config.apiKey) {
+      throw new Error('DeepSeek API key is required');
+    }
+    return new DeepSeekContentGenerator(config.apiKey);
+  }
+
+  if (config.authType === AuthType.USE_OPENAI_LIKE) {
+    if (!config.openaiLikeConfig) {
+      throw new Error('OpenAI-like API configuration is required');
+    }
+    return new OpenAILikeContentGenerator(config.openaiLikeConfig);
   }
 
   throw new Error(
